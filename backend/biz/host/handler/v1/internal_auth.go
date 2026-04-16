@@ -33,6 +33,31 @@ func defaultAsyncRunner(fn func()) {
 	go fn()
 }
 
+type agentTokenGetter func(ctx context.Context, key string) (string, error)
+
+func defaultAgentTokenGetter(rdb *redis.Client) agentTokenGetter {
+	const luaGetDel = `
+local v = redis.call('GET', KEYS[1])
+if v then
+	 redis.call('DEL', KEYS[1])
+	 return v
+end
+return nil
+`
+	return func(ctx context.Context, key string) (string, error) {
+		res, err := rdb.Eval(ctx, luaGetDel, []string{key}).Result()
+		if err != nil {
+			return "", err
+		}
+
+		b, ok := res.(string)
+		if !ok || b == "" {
+			return "", redis.Nil
+		}
+		return b, nil
+	}
+}
+
 func (h *InternalHostHandler) tryRecycledVMDelete(ctx context.Context, vm *db.VirtualMachine, machineID string) {
 	if h.limiter == nil || h.vmDeleter == nil || h.runAsync == nil {
 		h.logger.WarnContext(ctx, "skip recycled vm delete retry", "vm_id", vm.ID, "machine_id", machineID, "error", "missing dependency")

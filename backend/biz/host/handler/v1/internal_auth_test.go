@@ -18,18 +18,15 @@ import (
 
 func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 	vmClient := &vmDeleterStub{}
-	redisClient := newTestRedisClient()
-	t.Cleanup(func() {
-		_ = redisClient.Close()
-	})
 	handler := &InternalHostHandler{
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		redis:  redisClient,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
 		repo: &internalHostRepoStub{
 			vm: &db.VirtualMachine{
 				ID:            "agent_1",
 				HostID:        "host_1",
 				EnvironmentID: "env_1",
+				MachineID:     "bound-machine",
 				UserID:        uuid.MustParse("11111111-1111-1111-1111-111111111111"),
 				IsRecycled:    true,
 			},
@@ -41,8 +38,8 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 	}
 
 	_, err := handler.agentAuth(context.Background(), "agent_1", "machine-1")
-	if err == nil {
-		t.Fatal("expected recycled vm auth to fail")
+	if !errors.Is(err, errAgentVMRecycled) {
+		t.Fatalf("agent auth error = %v, want %v", err, errAgentVMRecycled)
 	}
 	if len(vmClient.reqs) != 1 {
 		t.Fatalf("delete calls = %d, want 1", len(vmClient.reqs))
@@ -54,18 +51,15 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 
 func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 	vmClient := &vmDeleterStub{}
-	redisClient := newTestRedisClient()
-	t.Cleanup(func() {
-		_ = redisClient.Close()
-	})
 	handler := &InternalHostHandler{
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		redis:  redisClient,
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
 		repo: &internalHostRepoStub{
 			vm: &db.VirtualMachine{
 				ID:            "agent_2",
 				HostID:        "host_2",
 				EnvironmentID: "env_2",
+				MachineID:     "bound-machine",
 				UserID:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
 				IsRecycled:    true,
 			},
@@ -77,8 +71,8 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 	}
 
 	_, err := handler.agentAuth(context.Background(), "agent_2", "machine-2")
-	if err == nil {
-		t.Fatal("expected recycled vm auth to fail")
+	if !errors.Is(err, errAgentVMRecycled) {
+		t.Fatalf("agent auth error = %v, want %v", err, errAgentVMRecycled)
 	}
 	if len(vmClient.reqs) != 0 {
 		t.Fatalf("delete calls = %d, want 0", len(vmClient.reqs))
@@ -142,15 +136,4 @@ func (s *vmDeleterStub) Delete(_ context.Context, req *taskflow.DeleteVirtualMac
 	cp := *req
 	s.reqs = append(s.reqs, &cp)
 	return s.err
-}
-
-func newTestRedisClient() *redis.Client {
-	return redis.NewClient(&redis.Options{
-		Addr:         "127.0.0.1:1",
-		DialTimeout:  5 * time.Millisecond,
-		ReadTimeout:  5 * time.Millisecond,
-		WriteTimeout: 5 * time.Millisecond,
-		PoolTimeout:  5 * time.Millisecond,
-		MaxRetries:   0,
-	})
 }

@@ -44,6 +44,7 @@ type InternalHostHandler struct {
 	repo           internalHostRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
+	getAgentToken  agentTokenGetter
 	limiter        vmDeleteLimiter
 	vmDeleter      vmDeleter
 	skipSoftDelete func(context.Context) context.Context
@@ -66,6 +67,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		repo:           do.MustInvoke[domain.HostRepo](i),
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
 		redis:          rdb,
+		getAgentToken:  defaultAgentTokenGetter(rdb),
 		limiter:        rdb,
 		vmDeleter:      tf.VirtualMachiner(),
 		skipSoftDelete: entx.SkipSoftDelete,
@@ -199,36 +201,26 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) (*taskflow.Token, error) {
 	// 1) 优先从 Redis 读取一次性 agent token，并清除
 	key := fmt.Sprintf("agent:token:%s", token)
-	luaGetDel := `
-local v = redis.call('GET', KEYS[1])
-if v then
-	 redis.call('DEL', KEYS[1])
-	 return v
-end
-return nil
-`
-	res, err := h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
-	h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
+	res, err := h.getAgentToken(ctx, key)
+	h.logger.With("mid", mid, "key", key, "hit", err == nil, "error", err).DebugContext(ctx, "agent auth...")
 	if err == nil {
-		if b, ok := res.(string); ok && b != "" {
-			var t taskflow.Token
-			if uerr := json.Unmarshal([]byte(b), &t); uerr != nil {
-				h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
-				return nil, uerr
-			}
-
-			if mid != "" {
-				if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
-					up.SetMachineID(mid)
-					return nil
-				}); err != nil {
-					h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
-					return nil, err
-				}
-			}
-
-			return &t, nil
+		var t taskflow.Token
+		if uerr := json.Unmarshal([]byte(res), &t); uerr != nil {
+			h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
+			return nil, uerr
 		}
+
+		if mid != "" {
+			if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
+				up.SetMachineID(mid)
+				return nil
+			}); err != nil {
+				h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
+				return nil, err
+			}
+		}
+
+		return &t, nil
 	} else if !errors.Is(err, redis.Nil) {
 		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
 	}
@@ -239,14 +231,14 @@ return nil
 		return nil, err
 	}
 
-	// 机器码绑定校验
-	if mid != "" && vm.MachineID != "" && vm.MachineID != mid {
-		return nil, fmt.Errorf("mismatch machine id")
-	}
-
 	if vm.IsRecycled {
 		h.tryRecycledVMDelete(ctx, vm, mid)
 		return nil, errAgentVMRecycled
+	}
+
+	// 机器码绑定校验
+	if mid != "" && vm.MachineID != "" && vm.MachineID != mid {
+		return nil, fmt.Errorf("mismatch machine id")
 	}
 
 	if vm.Edges.Host == nil {
