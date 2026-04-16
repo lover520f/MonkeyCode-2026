@@ -22,17 +22,32 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
+type internalHostRepo interface {
+	UpsertHost(context.Context, *taskflow.Host) error
+	UpsertVirtualMachine(context.Context, *taskflow.VirtualMachine) error
+	GetVirtualMachine(context.Context, string) (*db.VirtualMachine, error)
+	UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error
+	GetByID(context.Context, string) (*db.Host, error)
+	GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error)
+	GetGitCredentialByTask(context.Context, string) (*domain.GitCredentialInfo, error)
+}
+
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
 	logger         *slog.Logger
-	repo           domain.HostRepo
+	repo           internalHostRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
+	limiter        vmDeleteLimiter
+	vmDeleter      vmDeleter
+	skipSoftDelete func(context.Context) context.Context
+	runAsync       asyncRunner
 	cache          *cache.Cache
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase    domain.HostUsecase
@@ -43,13 +58,20 @@ type InternalHostHandler struct {
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
+	tf := do.MustInvoke[taskflow.Clienter](i)
+	rdb := do.MustInvoke[*redis.Client](i)
 
 	h := &InternalHostHandler{
 		logger:         do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
 		repo:           do.MustInvoke[domain.HostRepo](i),
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
-		redis:          do.MustInvoke[*redis.Client](i),
+		redis:          rdb,
+		limiter:        rdb,
+		vmDeleter:      tf.VirtualMachiner(),
+		skipSoftDelete: entx.SkipSoftDelete,
+		runAsync:       defaultAsyncRunner,
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
+		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -185,8 +207,16 @@ if v then
 end
 return nil
 `
-	res, err := h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
-	h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
+	var (
+		res interface{}
+		err error
+	)
+	if h.redis != nil {
+		res, err = h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
+		h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
+	} else {
+		err = redis.Nil
+	}
 	if err == nil {
 		if b, ok := res.(string); ok && b != "" {
 			var t taskflow.Token
@@ -223,7 +253,8 @@ return nil
 	}
 
 	if vm.IsRecycled {
-		return nil, fmt.Errorf("vm is recycled")
+		h.tryRecycledVMDelete(ctx, vm, mid)
+		return nil, errAgentVMRecycled
 	}
 
 	if vm.Edges.Host == nil {
