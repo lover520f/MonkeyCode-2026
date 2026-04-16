@@ -79,6 +79,43 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 	}
 }
 
+func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
+	vmClient := &vmDeleterStub{}
+	skipCalled := false
+	repo := &internalHostRepoStub{
+		vm: &db.VirtualMachine{
+			ID:            "agent_deleted",
+			HostID:        "host_deleted",
+			EnvironmentID: "env_deleted",
+			UserID:        uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+			IsRecycled:    true,
+		},
+	}
+	handler := &InternalHostHandler{
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
+		repo:          repo,
+		vmDeleter:     vmClient,
+		limiter:       &setNXLimiterStub{result: true},
+		skipSoftDelete: func(ctx context.Context) context.Context {
+			skipCalled = true
+			return ctx
+		},
+		runAsync: func(fn func()) { fn() },
+	}
+
+	_, err := handler.agentAuth(context.Background(), "agent_deleted", "machine-deleted")
+	if !errors.Is(err, errAgentVMRecycled) {
+		t.Fatalf("agent auth error = %v, want %v", err, errAgentVMRecycled)
+	}
+	if !skipCalled {
+		t.Fatal("expected skipSoftDelete to be called")
+	}
+	if len(vmClient.reqs) != 1 {
+		t.Fatalf("delete calls = %d, want 1", len(vmClient.reqs))
+	}
+}
+
 type internalHostRepoStub struct {
 	vm *db.VirtualMachine
 }

@@ -226,7 +226,7 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 	}
 
 	// 2) Redis 没值时根据数据库校验 token
-	vm, err := h.repo.GetVirtualMachine(ctx, token)
+	vm, err := h.repo.GetVirtualMachine(h.skipSoftDelete(ctx), token)
 	if err != nil {
 		return nil, err
 	}
