@@ -82,6 +82,9 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 	vmClient := &vmDeleterStub{}
 	skipCalled := false
+	type testSkipMarkerKey struct{}
+	markerKey := testSkipMarkerKey{}
+	const markerValue = "skip-soft-delete-visible"
 	repo := &internalHostRepoStub{
 		vm: &db.VirtualMachine{
 			ID:            "agent_deleted",
@@ -90,6 +93,9 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 			UserID:        uuid.MustParse("33333333-3333-3333-3333-333333333333"),
 			IsRecycled:    true,
 		},
+		assertSkipMarker: true,
+		skipMarkerKey:    markerKey,
+		skipMarkerValue:  markerValue,
 	}
 	handler := &InternalHostHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -99,7 +105,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 		limiter:       &setNXLimiterStub{result: true},
 		skipSoftDelete: func(ctx context.Context) context.Context {
 			skipCalled = true
-			return ctx
+			return context.WithValue(ctx, markerKey, markerValue)
 		},
 		runAsync: func(fn func()) { fn() },
 	}
@@ -117,7 +123,10 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 }
 
 type internalHostRepoStub struct {
-	vm *db.VirtualMachine
+	vm               *db.VirtualMachine
+	assertSkipMarker bool
+	skipMarkerKey    interface{}
+	skipMarkerValue  string
 }
 
 func (s *internalHostRepoStub) UpsertHost(context.Context, *taskflow.Host) error {
@@ -128,7 +137,13 @@ func (s *internalHostRepoStub) UpsertVirtualMachine(context.Context, *taskflow.V
 	return nil
 }
 
-func (s *internalHostRepoStub) GetVirtualMachine(context.Context, string) (*db.VirtualMachine, error) {
+func (s *internalHostRepoStub) GetVirtualMachine(ctx context.Context, _ string) (*db.VirtualMachine, error) {
+	if s.assertSkipMarker {
+		v, ok := ctx.Value(s.skipMarkerKey).(string)
+		if !ok || v != s.skipMarkerValue {
+			return nil, errors.New("skip soft delete context marker missing")
+		}
+	}
 	if s.vm == nil {
 		return nil, errors.New("vm not found")
 	}
