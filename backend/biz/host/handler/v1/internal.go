@@ -207,16 +207,8 @@ if v then
 end
 return nil
 `
-	var (
-		res interface{}
-		err error
-	)
-	if h.redis != nil {
-		res, err = h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
-		h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
-	} else {
-		err = redis.Nil
-	}
+	res, err := h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
+	h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
 	if err == nil {
 		if b, ok := res.(string); ok && b != "" {
 			var t taskflow.Token

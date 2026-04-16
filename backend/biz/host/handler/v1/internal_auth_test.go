@@ -18,8 +18,13 @@ import (
 
 func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 	vmClient := &vmDeleterStub{}
+	redisClient := newTestRedisClient()
+	t.Cleanup(func() {
+		_ = redisClient.Close()
+	})
 	handler := &InternalHostHandler{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		redis:  redisClient,
 		repo: &internalHostRepoStub{
 			vm: &db.VirtualMachine{
 				ID:            "agent_1",
@@ -49,8 +54,13 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 
 func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 	vmClient := &vmDeleterStub{}
+	redisClient := newTestRedisClient()
+	t.Cleanup(func() {
+		_ = redisClient.Close()
+	})
 	handler := &InternalHostHandler{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		redis:  redisClient,
 		repo: &internalHostRepoStub{
 			vm: &db.VirtualMachine{
 				ID:            "agent_2",
@@ -132,4 +142,15 @@ func (s *vmDeleterStub) Delete(_ context.Context, req *taskflow.DeleteVirtualMac
 	cp := *req
 	s.reqs = append(s.reqs, &cp)
 	return s.err
+}
+
+func newTestRedisClient() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  5 * time.Millisecond,
+		ReadTimeout:  5 * time.Millisecond,
+		WriteTimeout: 5 * time.Millisecond,
+		PoolTimeout:  5 * time.Millisecond,
+		MaxRetries:   0,
+	})
 }
