@@ -25,9 +25,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
-	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -41,7 +41,7 @@ type TaskHandler struct {
 	pubhost       domain.PublicHostUsecase
 	logger        *slog.Logger
 	taskflow      taskflow.Clienter
-	loki          *loki.Client
+	tasklog       *tasklog.Gateway
 	nls           *nls.NLS
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
@@ -59,7 +59,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	uuc := do.MustInvoke[domain.UserUsecase](i)
 	logger := do.MustInvoke[*slog.Logger](i)
 	tf := do.MustInvoke[taskflow.Clienter](i)
-	lok := do.MustInvoke[*loki.Client](i)
+	gw := do.MustInvoke[*tasklog.Gateway](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
 	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	tc := do.MustInvoke[*ws.TaskConn](i)
@@ -88,7 +88,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		pubhost:       pubhost,
 		logger:        logger.With("handler", "task.handler"),
 		taskflow:      tf,
-		loki:          lok,
+		tasklog:       gw,
 		nls:           nlsSvc,
 		taskConns:     tc,
 		controlConns:  cc,
@@ -424,7 +424,7 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	}()
 	attachNow := time.Now().UTC()
 
-	roundStart, err := h.loki.FindLatestRoundStart(ctx, taskID, taskCreatedAt, attachNow)
+	roundStart, err := h.tasklog.FindLatestTurnStart(ctx, task.ID, taskCreatedAt, attachNow, "")
 	if err != nil {
 		return fmt.Errorf("find latest round start: %w", err)
 	}
@@ -432,7 +432,7 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	h.writeCursor(wsConn, roundStart, hasMore)
 
 	// 读最新论次的 loki 历史窗口
-	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, taskID, roundStart, attachNow)
+	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, task.ID, roundStart, attachNow)
 	if err != nil {
 		return err
 	}
@@ -446,26 +446,18 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	return nil
 }
 
-func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Logger) ([]domain.TaskStream, bool) {
+func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger) ([]domain.TaskStream, bool) {
 	streams := make([]domain.TaskStream, 0, len(entries))
 	ended := false
 
-	for _, l := range entries {
-		if l.Line == "" {
-			continue
-		}
-		var chunk taskflow.TaskChunk
-		if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-			logger.Error("failed to unmarshal log entry", "line", l.Line, "error", err)
-			continue
-		}
+	for _, entry := range entries {
 		streams = append(streams, domain.TaskStream{
-			Type:      consts.TaskStreamType(chunk.Event),
-			Data:      chunk.Data,
-			Kind:      chunk.Kind,
-			Timestamp: l.Timestamp.UnixMilli(),
+			Type:      consts.TaskStreamType(entry.Event),
+			Data:      []byte(entry.Data),
+			Kind:      entry.Kind,
+			Timestamp: entry.TS.UnixMilli(),
 		})
-		if chunk.Event == "task-ended" {
+		if entry.Event == "task-ended" {
 			ended = true
 		}
 	}
@@ -473,13 +465,13 @@ func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Lo
 	return streams, ended
 }
 
-func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, start, end time.Time) (bool, error) {
-	entries, err := h.loki.QueryWindowByTaskID(ctx, taskID, start, end)
+func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID uuid.UUID, start, end time.Time) (bool, error) {
+	entries, err := h.tasklog.QueryWindow(ctx, taskID, start, end, "")
 	if err != nil {
 		return false, fmt.Errorf("query latest round history: %w", err)
 	}
 
-	streams, ended := buildTaskStreamsFromHistoryEntries(entries, logger)
+	streams, ended := buildTaskStreamsFromLogEntries(entries, logger)
 	for _, stream := range streams {
 		if err := wsConn.WriteJSON(stream); err != nil {
 			return false, err
@@ -643,6 +635,7 @@ func (h *TaskHandler) handleReplyQuestion(ctx context.Context, logger *slog.Logg
 		return
 	}
 	req.TaskId = task.ID.String()
+	req.LogStore = string(task.LogStore)
 	if err := h.taskflow.TaskManager().AskUserQuestion(ctx, req); err != nil {
 		logger.With("error", err).WarnContext(ctx, "failed to send ask user question")
 	}
@@ -723,7 +716,7 @@ func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error
 	}
 	start := time.Unix(task.CreatedAt, 0)
 
-	result, err := h.loki.QueryRounds(ctx, task.ID.String(), start, end, req.Limit)
+	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, end, req.Limit, "")
 	if err != nil {
 		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query rounds")
 		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query rounds: %w", err))

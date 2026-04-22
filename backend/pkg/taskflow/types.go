@@ -133,6 +133,7 @@ type CreateVirtualMachineReq struct {
 	Memory              uint64         `json:"memory"`
 	InstallCodingAgents bool           `json:"install_coding_agents"`
 	Envs                []string       `json:"envs,omitempty"`
+	LogStore            string         `json:"log_store,omitempty"`
 }
 
 // Git 仓库信息
@@ -359,6 +360,7 @@ type AskUserQuestionResponse struct {
 	RequestId   string `json:"request_id,omitempty"`
 	AnswersJson string `json:"answers_json,omitempty"`
 	Cancelled   bool   `json:"cancelled,omitempty"`
+	LogStore    string `json:"log_store,omitempty"`
 }
 
 // ApplyWebClientIPReq 同步 Web 客户端 IP 请求
@@ -493,6 +495,7 @@ type RestartTaskReq struct {
 	ID          uuid.UUID `json:"id"`
 	RequestId   string    `json:"request_id,omitempty"`
 	LoadSession bool      `json:"load_session"`
+	LogStore    string    `json:"log_store,omitempty"`
 }
 
 // RestartTaskResp 重启任务响应
@@ -518,9 +521,10 @@ type TaskReq struct {
 
 // Task 任务信息
 type Task struct {
-	ID    uuid.UUID `json:"id"`
-	Text  string    `json:"text"`
-	Image string    `json:"image"`
+	ID       uuid.UUID `json:"id"`
+	Text     string    `json:"text"`
+	Image    string    `json:"image"`
+	LogStore string    `json:"log_store,omitempty"`
 }
 
 // ==================== CreateTask 类型 ====================

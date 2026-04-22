@@ -340,6 +340,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.ID = task.ID
+		req.LogStore = string(task.LogStore)
 		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().Restart(ctx, req)
 
