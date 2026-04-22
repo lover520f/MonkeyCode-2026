@@ -56,20 +56,20 @@ func (p *LokiProvider) QueryLatestTurn(ctx context.Context, taskID uuid.UUID, ta
 	if p.client == nil {
 		return nil, ErrProviderUnavailable
 	}
-	roundStart, err := p.client.FindLatestRoundStart(ctx, taskID.String(), taskCreatedAt, end)
+	turnStart, err := p.client.FindLatestRoundStart(ctx, taskID.String(), taskCreatedAt, end)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := p.QueryWindow(ctx, taskID, roundStart, end)
+	entries, err := p.QueryWindow(ctx, taskID, turnStart, end)
 	if err != nil {
 		return nil, err
 	}
 	resp := &QueryLatestTurnResp{
 		Entries: entries,
-		HasMore: roundStart.After(taskCreatedAt),
+		HasMore: turnStart.After(taskCreatedAt),
 	}
 	if resp.HasMore {
-		resp.NextCursor = strconv.FormatInt(roundStart.UnixNano()-1, 10)
+		resp.NextCursor = strconv.FormatInt(turnStart.UnixNano()-1, 10)
 	}
 	return resp, nil
 }
@@ -91,14 +91,14 @@ func (p *LokiProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCre
 		return nil, err
 	}
 	out := &QueryTurnsResp{
-		Chunks:  make([]*RoundChunk, 0, len(resp.Chunks)),
+		Chunks:  make([]*TurnChunk, 0, len(resp.Chunks)),
 		HasMore: resp.HasMore,
 	}
 	if resp.HasMore && resp.NextTS > 0 {
 		out.NextCursor = strconv.FormatInt(resp.NextTS, 10)
 	}
 	for _, chunk := range resp.Chunks {
-		out.Chunks = append(out.Chunks, &RoundChunk{
+		out.Chunks = append(out.Chunks, &TurnChunk{
 			Data:      chunk.Data,
 			Event:     chunk.Event,
 			Kind:      chunk.Kind,

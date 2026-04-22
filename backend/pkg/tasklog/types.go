@@ -29,7 +29,7 @@ type QueryLatestTurnResp struct {
 	NextCursor string
 }
 
-type RoundChunk struct {
+type TurnChunk struct {
 	Data      []byte
 	Event     string
 	Kind      string
@@ -38,7 +38,7 @@ type RoundChunk struct {
 }
 
 type QueryTurnsResp struct {
-	Chunks     []*RoundChunk
+	Chunks     []*TurnChunk
 	HasMore    bool
 	NextCursor string
 }

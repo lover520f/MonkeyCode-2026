@@ -111,7 +111,7 @@ LIMIT ?`
 		turns = turns[:limit]
 	}
 
-	chunks, err := p.queryRoundChunks(ctx, taskID, turns)
+	chunks, err := p.queryTurnChunks(ctx, taskID, turns)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ ORDER BY ts ASC, ingest_id ASC`
 	return entries, nil
 }
 
-func (p *ClickHouseProvider) queryRoundChunks(ctx context.Context, taskID uuid.UUID, turns []uint32) ([]*RoundChunk, error) {
+func (p *ClickHouseProvider) queryTurnChunks(ctx context.Context, taskID uuid.UUID, turns []uint32) ([]*TurnChunk, error) {
 	placeholders := make([]string, 0, len(turns))
 	args := make([]any, 0, len(turns)+1)
 	args = append(args, taskID)
@@ -217,7 +217,7 @@ ORDER BY turn_seq DESC, ts ASC, ingest_id ASC`, strings.Join(placeholders, ", ")
 	}
 	defer rows.Close()
 
-	chunks := make([]*RoundChunk, 0)
+	chunks := make([]*TurnChunk, 0)
 	for rows.Next() {
 		var (
 			ts    time.Time
@@ -228,7 +228,7 @@ ORDER BY turn_seq DESC, ts ASC, ingest_id ASC`, strings.Join(placeholders, ", ")
 		if err := rows.Scan(&ts, &event, &kind, &data); err != nil {
 			return nil, err
 		}
-		chunks = append(chunks, &RoundChunk{
+		chunks = append(chunks, &TurnChunk{
 			Data:      []byte(data),
 			Event:     event,
 			Kind:      kind,

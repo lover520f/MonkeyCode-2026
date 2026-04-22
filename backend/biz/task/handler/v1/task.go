@@ -30,7 +30,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
-var errRoundEnded = errors.New("round ended")
+var errTurnEnded = errors.New("turn ended")
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
@@ -109,7 +109,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.GET("/:id", web.BindHandler(h.Info))
 	v1.GET("/stream", web.BindHandler(h.Stream))
 	v1.GET("/control", web.BindHandler(h.Control))
-	v1.GET("/rounds", web.BindHandler(h.TaskRounds))
+	v1.GET("/rounds", web.BindHandler(h.TaskTurns))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/stop", web.BindHandler(h.Stop))
 	v1.DELETE("/:id", web.BindHandler(h.Delete))
@@ -335,20 +335,20 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	- user-input: 用户输入
 //	@Description	- user-cancel: 取消当前操作，不会终止任务
 //	@Description	- reply-question: 回复 AI 的提问
-//	@Description	- cursor: 历史游标，用于通过 /rounds 接口加载更早的论次
+//	@Description	- cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次
 //	@Description
 //	@Description	cursor 消息结构：
 //	@Description	```json
-//	@Description	{ "type": "cursor", "data": { "cursor": "<lastTaskStartedTS_ns>", "has_more": true }, "timestamp": 0 }
+//	@Description	{ "type": "cursor", "data": { "cursor": "<nextCursor>", "has_more": true }, "timestamp": 0 }
 //	@Description	```
-//	@Description	- cursor: 当前论次 task-started 的时间戳（Unix 纳秒），作为 GET /rounds 接口的 cursor 参数向前翻页
-//	@Description	- has_more: 是否存在更早的论次。为 false 时表示当前论次即为第一论次，无需再翻页
+//	@Description	- cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页
+//	@Description	- has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
 //	@Param			id		query		string		true	"任务 ID"
-//	@Param			mode	query		string		false	"模式：new(等待用户输入)|attach(仅拉取当前论次)，默认 new"
+//	@Param			mode	query		string		false	"模式：new(等待用户输入)|attach(仅拉取当前轮次)，默认 new"
 //	@Success		200		{object}	web.Resp{}	"成功"
 //	@Failure		500		{object}	web.Resp	"服务器内部错误"
 //	@Router			/api/v1/users/tasks/stream [get]
@@ -497,7 +497,7 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 				return
 			}
 			if chunk.Event == "task-ended" {
-				cancel(errRoundEnded)
+				cancel(errTurnEnded)
 				return
 			}
 		}
@@ -516,13 +516,13 @@ func (h *TaskHandler) subscribeRealtimeStream(ctx context.Context, cancel contex
 		}
 
 		if chunk.Event == "task-ended" {
-			cancel(errRoundEnded)
-			return errRoundEnded
+			cancel(errTurnEnded)
+			return errTurnEnded
 		}
 		return nil
 	})
 
-	if err != nil && !errors.Is(err, errRoundEnded) {
+	if err != nil && !errors.Is(err, errTurnEnded) {
 		logger.ErrorContext(ctx, "realtime stream failed", "error", err)
 		h.writeError(wsConn, fmt.Errorf("failed to subscribe realtime stream: %w", err))
 		cancel(fmt.Errorf("failed to subscribe realtime stream: %w", err))
@@ -654,7 +654,7 @@ func (h *TaskHandler) writeError(wsConn *ws.WebsocketManager, err error) {
 	})
 }
 
-// writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史
+// writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史轮次
 func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) {
 	if cursor == "" {
 		return
@@ -670,22 +670,22 @@ func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, ha
 	})
 }
 
-// TaskRounds 查询任务历史论次（原始 TaskChunk，向前翻页）
+// TaskTurns 查询任务历史轮次（原始 TaskChunk，向前翻页）
 //
-//	@Summary		查询任务历史论次
-//	@Description	根据 cursor 向前翻页查询任务的历史论次。limit 为论次数（非条目数），
-//	@Description	limit=2 表示返回 2 论的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+//	@Summary		查询任务历史轮次
+//	@Description	根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），
+//	@Description	limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
 //	@Param			id		query		string									true	"任务 ID"
-//	@Param			cursor	query		string									false	"游标（时间戳 Unix ns）"
-//	@Param			limit	query		int										false	"论次数（默认 2，上限 10）"
+//	@Param			cursor	query		string									false	"分页游标"
+//	@Param			limit	query		int										false	"轮次数（默认 2，上限 10）"
 //	@Success		200		{object}	web.Resp{data=domain.TaskRoundsResp}	"成功"
 //	@Failure		500		{object}	web.Resp								"服务器内部错误"
 //	@Router			/api/v1/users/tasks/rounds [get]
-func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error {
+func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error {
 	ctx := c.Request().Context()
 	user := middleware.GetUser(c)
 
@@ -699,8 +699,8 @@ func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error
 
 	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, req.Cursor, req.Limit, "")
 	if err != nil {
-		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query rounds")
-		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query rounds: %w", err))
+		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query turns")
+		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query turns: %w", err))
 	}
 
 	chunks := make([]*domain.TaskChunkEntry, 0, len(result.Chunks)+1)
