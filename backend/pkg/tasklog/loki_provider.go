@@ -3,6 +3,7 @@ package tasklog
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,25 +52,50 @@ func (p *LokiProvider) QueryWindow(ctx context.Context, taskID uuid.UUID, start,
 	return out, nil
 }
 
-func (p *LokiProvider) FindLatestTurnStart(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time) (time.Time, error) {
-	if p.client == nil {
-		return time.Time{}, ErrProviderUnavailable
-	}
-	return p.client.FindLatestRoundStart(ctx, taskID.String(), taskCreatedAt, end)
-}
-
-func (p *LokiProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, start, end time.Time, limit int) (*QueryTurnsResp, error) {
+func (p *LokiProvider) QueryLatestTurn(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time) (*QueryLatestTurnResp, error) {
 	if p.client == nil {
 		return nil, ErrProviderUnavailable
 	}
-	resp, err := p.client.QueryRounds(ctx, taskID.String(), start, end, limit)
+	roundStart, err := p.client.FindLatestRoundStart(ctx, taskID.String(), taskCreatedAt, end)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := p.QueryWindow(ctx, taskID, roundStart, end)
+	if err != nil {
+		return nil, err
+	}
+	resp := &QueryLatestTurnResp{
+		Entries: entries,
+		HasMore: roundStart.After(taskCreatedAt),
+	}
+	if resp.HasMore {
+		resp.NextCursor = strconv.FormatInt(roundStart.UnixNano()-1, 10)
+	}
+	return resp, nil
+}
+
+func (p *LokiProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int) (*QueryTurnsResp, error) {
+	if p.client == nil {
+		return nil, ErrProviderUnavailable
+	}
+	end := time.Now()
+	if cursor != "" {
+		ns, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		end = time.Unix(0, ns)
+	}
+	resp, err := p.client.QueryRounds(ctx, taskID.String(), taskCreatedAt, end, limit)
 	if err != nil {
 		return nil, err
 	}
 	out := &QueryTurnsResp{
 		Chunks:  make([]*RoundChunk, 0, len(resp.Chunks)),
 		HasMore: resp.HasMore,
-		NextTS:  resp.NextTS,
+	}
+	if resp.HasMore && resp.NextTS > 0 {
+		out.NextCursor = strconv.FormatInt(resp.NextTS, 10)
 	}
 	for _, chunk := range resp.Chunks {
 		out.Chunks = append(out.Chunks, &RoundChunk{
@@ -81,12 +107,4 @@ func (p *LokiProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, start, 
 		})
 	}
 	return out, nil
-}
-
-func (p *LokiProvider) QueryUserInputs(context.Context, []uuid.UUID, time.Time, int) ([]Entry, error) {
-	return nil, ErrUnsupported
-}
-
-func (p *LokiProvider) CountEvents(context.Context, []uuid.UUID, []string) (int, error) {
-	return 0, ErrUnsupported
 }

@@ -19,24 +19,12 @@ func (p *providerStub) Name() string {
 	return p.name
 }
 
-func (p *providerStub) QueryWindow(context.Context, uuid.UUID, time.Time, time.Time) ([]tasklog.Entry, error) {
+func (p *providerStub) QueryLatestTurn(context.Context, uuid.UUID, time.Time, time.Time) (*tasklog.QueryLatestTurnResp, error) {
 	return nil, nil
 }
 
-func (p *providerStub) FindLatestTurnStart(context.Context, uuid.UUID, time.Time, time.Time) (time.Time, error) {
-	return time.Time{}, nil
-}
-
-func (p *providerStub) QueryTurns(context.Context, uuid.UUID, time.Time, time.Time, int) (*tasklog.QueryTurnsResp, error) {
+func (p *providerStub) QueryTurns(context.Context, uuid.UUID, time.Time, string, int) (*tasklog.QueryTurnsResp, error) {
 	return nil, nil
-}
-
-func (p *providerStub) QueryUserInputs(context.Context, []uuid.UUID, time.Time, int) ([]tasklog.Entry, error) {
-	return nil, nil
-}
-
-func (p *providerStub) CountEvents(context.Context, []uuid.UUID, []string) (int, error) {
-	return 0, nil
 }
 
 func TestGatewayRoutesByTaskLogStore(t *testing.T) {

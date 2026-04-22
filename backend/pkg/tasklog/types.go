@@ -23,6 +23,12 @@ type Entry struct {
 	Labels  map[string]string
 }
 
+type QueryLatestTurnResp struct {
+	Entries    []Entry
+	HasMore    bool
+	NextCursor string
+}
+
 type RoundChunk struct {
 	Data      []byte
 	Event     string
@@ -32,7 +38,7 @@ type RoundChunk struct {
 }
 
 type QueryTurnsResp struct {
-	Chunks  []*RoundChunk
-	HasMore bool
-	NextTS  int64
+	Chunks     []*RoundChunk
+	HasMore    bool
+	NextCursor string
 }

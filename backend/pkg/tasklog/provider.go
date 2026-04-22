@@ -9,9 +9,6 @@ import (
 
 type Provider interface {
 	Name() string
-	QueryWindow(ctx context.Context, taskID uuid.UUID, start, end time.Time) ([]Entry, error)
-	FindLatestTurnStart(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time) (time.Time, error)
-	QueryTurns(ctx context.Context, taskID uuid.UUID, start, end time.Time, limit int) (*QueryTurnsResp, error)
-	QueryUserInputs(ctx context.Context, taskIDs []uuid.UUID, end time.Time, limit int) ([]Entry, error)
-	CountEvents(ctx context.Context, taskIDs []uuid.UUID, events []string) (int, error)
+	QueryLatestTurn(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time) (*QueryLatestTurnResp, error)
+	QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int) (*QueryTurnsResp, error)
 }

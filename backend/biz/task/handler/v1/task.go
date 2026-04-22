@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -424,15 +423,13 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	}()
 	attachNow := time.Now().UTC()
 
-	roundStart, err := h.tasklog.FindLatestTurnStart(ctx, task.ID, taskCreatedAt, attachNow, "")
+	latestTurn, err := h.tasklog.QueryLatestTurn(ctx, task.ID, taskCreatedAt, attachNow, "")
 	if err != nil {
-		return fmt.Errorf("find latest round start: %w", err)
+		return fmt.Errorf("query latest turn: %w", err)
 	}
-	hasMore := roundStart.After(taskCreatedAt)
-	h.writeCursor(wsConn, roundStart, hasMore)
+	h.writeCursor(wsConn, latestTurn.NextCursor, latestTurn.HasMore)
 
-	// 读最新论次的 loki 历史窗口
-	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, task.ID, roundStart, attachNow)
+	ended, err := h.replayLatestTurnHistory(wsConn, latestTurn.Entries)
 	if err != nil {
 		return err
 	}
@@ -465,13 +462,8 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 	return streams, ended
 }
 
-func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID uuid.UUID, start, end time.Time) (bool, error) {
-	entries, err := h.tasklog.QueryWindow(ctx, taskID, start, end, "")
-	if err != nil {
-		return false, fmt.Errorf("query latest round history: %w", err)
-	}
-
-	streams, ended := buildTaskStreamsFromLogEntries(entries, logger)
+func (h *TaskHandler) replayLatestTurnHistory(wsConn *ws.WebsocketManager, entries []tasklog.Entry) (bool, error) {
+	streams, ended := buildTaskStreamsFromLogEntries(entries, h.logger)
 	for _, stream := range streams {
 		if err := wsConn.WriteJSON(stream); err != nil {
 			return false, err
@@ -663,12 +655,10 @@ func (h *TaskHandler) writeError(wsConn *ws.WebsocketManager, err error) {
 }
 
 // writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史
-func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, indexTime time.Time, hasMore bool) {
-	if indexTime.IsZero() {
+func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) {
+	if cursor == "" {
 		return
 	}
-
-	cursor := strconv.FormatInt(indexTime.UnixNano()-1, 10)
 	data, _ := json.Marshal(map[string]any{
 		"cursor":   cursor,
 		"has_more": hasMore,
@@ -705,18 +695,9 @@ func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error
 		return err
 	}
 
-	// 确定查询时间范围：从 cursor 往前查
-	end := time.Now()
-	if req.Cursor != "" {
-		ns, err := strconv.ParseInt(req.Cursor, 10, 64)
-		if err != nil {
-			return errcode.ErrBadRequest.Wrap(fmt.Errorf("invalid cursor: %w", err))
-		}
-		end = time.Unix(0, ns)
-	}
 	start := time.Unix(task.CreatedAt, 0)
 
-	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, end, req.Limit, "")
+	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, req.Cursor, req.Limit, "")
 	if err != nil {
 		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query rounds")
 		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query rounds: %w", err))
@@ -749,8 +730,8 @@ func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error
 		Chunks:  chunks,
 		HasMore: result.HasMore,
 	}
-	if result.HasMore && result.NextTS > 0 {
-		resp.NextCursor = strconv.FormatInt(result.NextTS, 10)
+	if result.HasMore && result.NextCursor != "" {
+		resp.NextCursor = result.NextCursor
 	}
 
 	return c.Success(resp)

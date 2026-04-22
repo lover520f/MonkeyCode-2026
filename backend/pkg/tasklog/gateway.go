@@ -30,44 +30,20 @@ func (g *Gateway) ProviderForTask(ctx context.Context, taskID uuid.UUID, source 
 	return g.providerByStore(store)
 }
 
-func (g *Gateway) QueryWindow(ctx context.Context, taskID uuid.UUID, start, end time.Time, source string) ([]Entry, error) {
+func (g *Gateway) QueryLatestTurn(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time, source string) (*QueryLatestTurnResp, error) {
 	p, err := g.ProviderForTask(ctx, taskID, source)
 	if err != nil {
 		return nil, err
 	}
-	return p.QueryWindow(ctx, taskID, start, end)
+	return p.QueryLatestTurn(ctx, taskID, taskCreatedAt, end)
 }
 
-func (g *Gateway) FindLatestTurnStart(ctx context.Context, taskID uuid.UUID, taskCreatedAt, end time.Time, source string) (time.Time, error) {
-	p, err := g.ProviderForTask(ctx, taskID, source)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return p.FindLatestTurnStart(ctx, taskID, taskCreatedAt, end)
-}
-
-func (g *Gateway) QueryTurns(ctx context.Context, taskID uuid.UUID, start, end time.Time, limit int, source string) (*QueryTurnsResp, error) {
+func (g *Gateway) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int, source string) (*QueryTurnsResp, error) {
 	p, err := g.ProviderForTask(ctx, taskID, source)
 	if err != nil {
 		return nil, err
 	}
-	return p.QueryTurns(ctx, taskID, start, end, limit)
-}
-
-func (g *Gateway) QueryUserInputs(ctx context.Context, taskID uuid.UUID, end time.Time, limit int, source string) ([]Entry, error) {
-	p, err := g.ProviderForTask(ctx, taskID, source)
-	if err != nil {
-		return nil, err
-	}
-	return p.QueryUserInputs(ctx, []uuid.UUID{taskID}, end, limit)
-}
-
-func (g *Gateway) CountEvents(ctx context.Context, taskID uuid.UUID, events []string, source string) (int, error) {
-	p, err := g.ProviderForTask(ctx, taskID, source)
-	if err != nil {
-		return 0, err
-	}
-	return p.CountEvents(ctx, []uuid.UUID{taskID}, events)
+	return p.QueryTurns(ctx, taskID, taskCreatedAt, cursor, limit)
 }
 
 func (g *Gateway) providerByStore(store consts.LogStore) (Provider, error) {
