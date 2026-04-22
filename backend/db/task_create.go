@@ -110,6 +110,20 @@ func (_c *TaskCreate) SetStatus(v consts.TaskStatus) *TaskCreate {
 	return _c
 }
 
+// SetLogStore sets the "log_store" field.
+func (_c *TaskCreate) SetLogStore(v consts.LogStore) *TaskCreate {
+	_c.mutation.SetLogStore(v)
+	return _c
+}
+
+// SetNillableLogStore sets the "log_store" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableLogStore(v *consts.LogStore) *TaskCreate {
+	if v != nil {
+		_c.SetLogStore(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TaskCreate) SetCreatedAt(v time.Time) *TaskCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -274,6 +288,10 @@ func (_c *TaskCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *TaskCreate) defaults() error {
+	if _, ok := _c.mutation.LogStore(); !ok {
+		v := task.DefaultLogStore
+		_c.mutation.SetLogStore(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if task.DefaultCreatedAt == nil {
 			return fmt.Errorf("db: uninitialized task.DefaultCreatedAt (forgotten import db/runtime?)")
@@ -316,6 +334,9 @@ func (_c *TaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`db: missing required field "Task.status"`)}
+	}
+	if _, ok := _c.mutation.LogStore(); !ok {
+		return &ValidationError{Name: "log_store", err: errors.New(`db: missing required field "Task.log_store"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`db: missing required field "Task.created_at"`)}
@@ -392,6 +413,10 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(task.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.LogStore(); ok {
+		_spec.SetField(task.FieldLogStore, field.TypeString, value)
+		_node.LogStore = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
@@ -666,6 +691,18 @@ func (u *TaskUpsert) UpdateStatus() *TaskUpsert {
 	return u
 }
 
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsert) SetLogStore(v consts.LogStore) *TaskUpsert {
+	u.Set(task.FieldLogStore, v)
+	return u
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsert) UpdateLogStore() *TaskUpsert {
+	u.SetExcluded(task.FieldLogStore)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *TaskUpsert) SetCreatedAt(v time.Time) *TaskUpsert {
 	u.Set(task.FieldCreatedAt, v)
@@ -905,6 +942,20 @@ func (u *TaskUpsertOne) SetStatus(v consts.TaskStatus) *TaskUpsertOne {
 func (u *TaskUpsertOne) UpdateStatus() *TaskUpsertOne {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsertOne) SetLogStore(v consts.LogStore) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLogStore(v)
+	})
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdateLogStore() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLogStore()
 	})
 }
 
@@ -1323,6 +1374,20 @@ func (u *TaskUpsertBulk) SetStatus(v consts.TaskStatus) *TaskUpsertBulk {
 func (u *TaskUpsertBulk) UpdateStatus() *TaskUpsertBulk {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsertBulk) SetLogStore(v consts.LogStore) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLogStore(v)
+	})
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdateLogStore() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLogStore()
 	})
 }
 

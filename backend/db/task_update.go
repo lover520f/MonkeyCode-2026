@@ -172,6 +172,20 @@ func (_u *TaskUpdate) SetNillableStatus(v *consts.TaskStatus) *TaskUpdate {
 	return _u
 }
 
+// SetLogStore sets the "log_store" field.
+func (_u *TaskUpdate) SetLogStore(v consts.LogStore) *TaskUpdate {
+	_u.mutation.SetLogStore(v)
+	return _u
+}
+
+// SetNillableLogStore sets the "log_store" field if the given value is not nil.
+func (_u *TaskUpdate) SetNillableLogStore(v *consts.LogStore) *TaskUpdate {
+	if v != nil {
+		_u.SetLogStore(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskUpdate) SetCreatedAt(v time.Time) *TaskUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -491,6 +505,9 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(task.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LogStore(); ok {
+		_spec.SetField(task.FieldLogStore, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
@@ -886,6 +903,20 @@ func (_u *TaskUpdateOne) SetNillableStatus(v *consts.TaskStatus) *TaskUpdateOne 
 	return _u
 }
 
+// SetLogStore sets the "log_store" field.
+func (_u *TaskUpdateOne) SetLogStore(v consts.LogStore) *TaskUpdateOne {
+	_u.mutation.SetLogStore(v)
+	return _u
+}
+
+// SetNillableLogStore sets the "log_store" field if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableLogStore(v *consts.LogStore) *TaskUpdateOne {
+	if v != nil {
+		_u.SetLogStore(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskUpdateOne) SetCreatedAt(v time.Time) *TaskUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -1235,6 +1266,9 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(task.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LogStore(); ok {
+		_spec.SetField(task.FieldLogStore, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)

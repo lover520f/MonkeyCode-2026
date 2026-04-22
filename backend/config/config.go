@@ -49,6 +49,7 @@ type Config struct {
 	Task        Task        `mapstructure:"task"`
 	TaskSummary TaskSummary `mapstructure:"task_summary"`
 	Loki        Loki        `mapstructure:"loki"`
+	ClickHouse  ClickHouse  `mapstructure:"clickhouse"`
 	LLM         LLM         `mapstructure:"llm"`
 	Notify      Notify      `mapstructure:"notify"`
 	VMIdle      VMIdle      `mapstructure:"vm_idle"`
@@ -126,6 +127,13 @@ type Loki struct {
 	Addr string `mapstructure:"addr"` // Loki 服务地址
 }
 
+type ClickHouse struct {
+	Addr     string `mapstructure:"addr"`
+	Database string `mapstructure:"database"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
 // LLM 大语言模型配置
 type LLM struct {
 	BaseURL       string `mapstructure:"base_url"`
@@ -175,6 +183,10 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("server.addr", ":8888")
 	v.SetDefault("server.base_url", "http://localhost:8888")
 	v.SetDefault("loki.addr", "http://monkeycode-ai-loki:3100")
+	v.SetDefault("clickhouse.addr", "")
+	v.SetDefault("clickhouse.database", "")
+	v.SetDefault("clickhouse.username", "")
+	v.SetDefault("clickhouse.password", "")
 	v.SetDefault("database.master", "")
 	v.SetDefault("database.slave", "")
 	v.SetDefault("database.max_open_conns", 100)

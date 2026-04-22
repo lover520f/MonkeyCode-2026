@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 )
 
 const (
@@ -31,6 +32,8 @@ const (
 	FieldSummary = "summary"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldLogStore holds the string denoting the log_store field in the database.
+	FieldLogStore = "log_store"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
@@ -97,6 +100,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldSummary,
 	FieldStatus,
+	FieldLogStore,
 	FieldCreatedAt,
 	FieldLastActiveAt,
 	FieldUpdatedAt,
@@ -129,6 +133,8 @@ var (
 	Interceptors [1]ent.Interceptor
 	// ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	ContentValidator func(string) error
+	// DefaultLogStore holds the default value on creation for the "log_store" field.
+	DefaultLogStore consts.LogStore
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultLastActiveAt holds the default value on creation for the "last_active_at" field.
@@ -185,6 +191,11 @@ func BySummary(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByLogStore orders the results by the log_store field.
+func ByLogStore(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLogStore, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

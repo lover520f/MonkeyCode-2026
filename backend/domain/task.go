@@ -178,6 +178,7 @@ type Task struct {
 	Title          string             `json:"title"`
 	Summary        string             `json:"summary"`
 	Status         consts.TaskStatus  `json:"status"`
+	LogStore       consts.LogStore    `json:"log_store"`
 	VirtualMachine *VirtualMachine    `json:"virtualmachine"`
 	CreatedAt      int64              `json:"created_at"`
 	LastActiveAt   int64              `json:"last_active_at"`
@@ -215,6 +216,7 @@ func (t *Task) From(src *db.Task) *Task {
 	t.Title = src.Title
 	t.Summary = src.Summary
 	t.Status = src.Status
+	t.LogStore = src.LogStore
 	t.CreatedAt = src.CreatedAt.Unix()
 	t.LastActiveAt = src.LastActiveAt.Unix()
 	t.CompletedAt = src.CompletedAt.Unix()

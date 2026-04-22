@@ -354,6 +354,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
+			SetLogStore(consts.LogStoreClickHouse).
 			Save(ctx)
 		if err != nil {
 			return err

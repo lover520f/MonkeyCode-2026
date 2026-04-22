@@ -110,6 +110,7 @@ func (h *TaskHook) handleProcessing(ctx context.Context, id uuid.UUID, metadata 
 			h.logger.With("task_id", id, "error", err).ErrorContext(ctx, "failed to unmarshal CreateTaskReq")
 			return fmt.Errorf("failed to unmarshal CreateTaskReq: %w", err)
 		}
+		createReq.LogStore = string(t.LogStore)
 
 		h.logger.With("task_id", id).InfoContext(ctx, "creating taskflow task")
 		if err := h.taskflow.TaskManager().Create(ctx, createReq); err != nil {

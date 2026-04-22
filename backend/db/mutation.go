@@ -23368,6 +23368,7 @@ type TaskMutation struct {
 	title                *string
 	summary              *string
 	status               *consts.TaskStatus
+	log_store            *consts.LogStore
 	created_at           *time.Time
 	last_active_at       *time.Time
 	updated_at           *time.Time
@@ -23836,6 +23837,42 @@ func (m *TaskMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetLogStore sets the "log_store" field.
+func (m *TaskMutation) SetLogStore(cs consts.LogStore) {
+	m.log_store = &cs
+}
+
+// LogStore returns the value of the "log_store" field in the mutation.
+func (m *TaskMutation) LogStore() (r consts.LogStore, exists bool) {
+	v := m.log_store
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLogStore returns the old "log_store" field's value of the Task entity.
+// If the Task object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskMutation) OldLogStore(ctx context.Context) (v consts.LogStore, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLogStore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLogStore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLogStore: %w", err)
+	}
+	return oldValue.LogStore, nil
+}
+
+// ResetLogStore resets all changes to the "log_store" field.
+func (m *TaskMutation) ResetLogStore() {
+	m.log_store = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TaskMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -24270,7 +24307,7 @@ func (m *TaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TaskMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.deleted_at != nil {
 		fields = append(fields, task.FieldDeletedAt)
 	}
@@ -24294,6 +24331,9 @@ func (m *TaskMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, task.FieldStatus)
+	}
+	if m.log_store != nil {
+		fields = append(fields, task.FieldLogStore)
 	}
 	if m.created_at != nil {
 		fields = append(fields, task.FieldCreatedAt)
@@ -24331,6 +24371,8 @@ func (m *TaskMutation) Field(name string) (ent.Value, bool) {
 		return m.Summary()
 	case task.FieldStatus:
 		return m.Status()
+	case task.FieldLogStore:
+		return m.LogStore()
 	case task.FieldCreatedAt:
 		return m.CreatedAt()
 	case task.FieldLastActiveAt:
@@ -24364,6 +24406,8 @@ func (m *TaskMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldSummary(ctx)
 	case task.FieldStatus:
 		return m.OldStatus(ctx)
+	case task.FieldLogStore:
+		return m.OldLogStore(ctx)
 	case task.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case task.FieldLastActiveAt:
@@ -24436,6 +24480,13 @@ func (m *TaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case task.FieldLogStore:
+		v, ok := value.(consts.LogStore)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLogStore(v)
 		return nil
 	case task.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -24570,6 +24621,9 @@ func (m *TaskMutation) ResetField(name string) error {
 		return nil
 	case task.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case task.FieldLogStore:
+		m.ResetLogStore()
 		return nil
 	case task.FieldCreatedAt:
 		m.ResetCreatedAt()

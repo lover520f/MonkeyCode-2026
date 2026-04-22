@@ -578,6 +578,7 @@ type CreateTaskReq struct {
 	Configs      []ConfigFile      `json:"configs,omitzero"`
 	McpConfigs   []McpServerConfig `json:"mcp_configs,omitzero"`
 	Env          map[string]string `json:"env,omitempty"`
+	LogStore     string            `json:"log_store,omitempty"`
 }
 
 // ==================== VirtualMachine 查询类型 ====================
